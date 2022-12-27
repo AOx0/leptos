@@ -32,18 +32,6 @@ where
 
   runtime.dispose();
 
-  let a = {
-    #[cfg(debug_assertions)]
-    {
-      format!("<style>[leptos]{{display:none;}}</style>{html}")
-    }
-
-    #[cfg(not(debug_assertions))]
-    {
-      format!("<style>l-m{{display:none;}}</style>{html}")
-    }
-  };
-
   let patterns = &[
     "<!--/-->",
     "<!--#-->",
@@ -115,7 +103,7 @@ where
     ".number",
   ];
 
-  let rdr = "<!DOCTYPE html>".to_owned() + &a;
+  let rdr = "<!DOCTYPE html>".to_owned() + &html;
   let mut wtr = vec![];
 
   let ac = aho_corasick::AhoCorasick::new(patterns);
