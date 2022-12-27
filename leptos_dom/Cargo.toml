@@ -8,6 +8,7 @@ repository = "https://github.com/gbj/leptos"
 description = "DOM operations for the Leptos web framework."
 
 [dependencies]
+aho-corasick = "0.7.20"
 cfg-if = "1"
 educe = "0.4"
 futures = "0.3"

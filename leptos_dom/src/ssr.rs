@@ -32,13 +32,97 @@ where
 
   runtime.dispose();
 
-  #[cfg(debug_assertions)]
-  {
-    format!("<style>[leptos]{{display:none;}}</style>{html}")
-  }
+  let a = {
+    #[cfg(debug_assertions)]
+    {
+      format!("<style>[leptos]{{display:none;}}</style>{html}")
+    }
 
-  #[cfg(not(debug_assertions))]
-  format!("<style>l-m{{display:none;}}</style>{html}")
+    #[cfg(not(debug_assertions))]
+    {
+      format!("<style>l-m{{display:none;}}</style>{html}")
+    }
+  };
+
+  let patterns = &[
+    "<!--/-->",
+    "<!--#-->",
+    ":shift",
+    ":enter",
+    ":space",
+    ":ctrl",
+    ":cmd",
+    ":meta",
+    ":alt",
+    ":up",
+    ":down",
+    ":left",
+    ":right",
+    ":escape",
+    ":tab",
+    ":caps-lock",
+    ":equal",
+    ":period",
+    ":slash",
+    ":prevent",
+    ":stop",
+    ":outside",
+    ":window",
+    ":document",
+    ":once",
+    ":debounce",
+    ":throttle",
+    ":self",
+    ":camel",
+    ":dot",
+    ":passive",
+    ":lazy",
+    ":number",
+  ];
+  let replacements = &[
+    "",
+    "",
+    ".shift",
+    ".enter",
+    ".space",
+    ".ctrl",
+    ".cmd",
+    ".meta",
+    ".alt",
+    ".up",
+    ".down",
+    ".left",
+    ".right",
+    ".escape",
+    ".tab",
+    ".caps-lock",
+    ".equal",
+    ".period",
+    ".slash",
+    ".prevent",
+    ".stop",
+    ".outside",
+    ".window",
+    ".document",
+    ".once",
+    ".debounce",
+    ".throttle",
+    ".self",
+    ".camel",
+    ".dot",
+    ".passive",
+    ".lazy",
+    ".number",
+  ];
+
+  let rdr = "<!DOCTYPE html>".to_owned() + &a;
+  let mut wtr = vec![];
+
+  let ac = aho_corasick::AhoCorasick::new(patterns);
+  ac.stream_replace_all(rdr.as_bytes(), &mut wtr, replacements)
+    .expect("stream_replace_all failed");
+
+  String::from_utf8(wtr).unwrap()
 }
 
 /// Renders a function to a stream of HTML strings.
@@ -342,90 +426,5 @@ impl View {
       }
       View::Transparent(_) => Default::default(),
     }
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn simple_ssr_test() {
-    use leptos::*;
-
-    _ = create_scope(create_runtime(), |cx| {
-      let (value, set_value) = create_signal(cx, 0);
-      let rendered = view! {
-        cx,
-        <div>
-            <button on:click=move |_| set_value.update(|value| *value -= 1)>"-1"</button>
-            <span>"Value: " {move || value.get().to_string()} "!"</span>
-            <button on:click=move |_| set_value.update(|value| *value += 1)>"+1"</button>
-        </div>
-    }.render_to_string();
-
-      assert_eq!(
-        rendered,
-        "<div><button id=\"1-1-2\">-1</button><span>Value: <template \
-         id=\"2-4-6o\"/> <template id=\"2-4-6c\"/>!</span><button \
-         id=\"1-3-4\">+1</button></div>"
-      );
-    });
-  }
-
-  #[test]
-  fn ssr_test_with_components() {
-    use leptos::*;
-
-    #[component]
-    fn Counter(cx: Scope, initial_value: i32) -> View {
-      let (value, set_value) = create_signal(cx, initial_value);
-      view! {
-          cx,
-          <div>
-              <button on:click=move |_| set_value.update(|value| *value -= 1)>"-1"</button>
-              <span>"Value: " {move || value.get().to_string()} "!"</span>
-              <button on:click=move |_| set_value.update(|value| *value += 1)>"+1"</button>
-          </div>
-      }
-    }
-
-    _ = create_scope(create_runtime(), |cx| {
-      let rendered = view! {
-          cx,
-          <div class="counters">
-              <Counter initial_value=1/>
-              <Counter initial_value=2/>
-          </div>
-      }
-      .render_to_string();
-
-      assert_eq!(
-        rendered,
-        "<div class=\"counters\"><template id=\"1-1-2o\"/><div><button \
-         id=\"3-1-4\">-1</button><span>Value: <template id=\"4-4-8o\"/> \
-         <template id=\"4-4-8c\"/>!</span><button \
-         id=\"3-3-6\">+1</button></div><template id=\"1-1-2c\"/><template \
-         id=\"1-2-3o\"/><div><button id=\"3-1-4\">-1</button><span>Value: \
-         <template id=\"4-4-8o\"/> <template id=\"4-4-8c\"/>!</span><button \
-         id=\"3-3-6\">+1</button></div><template id=\"1-2-3c\"/></div>"
-      );
-    });
-  }
-
-  #[test]
-  fn test_classes() {
-    use leptos::*;
-
-    _ = create_scope(create_runtime(), |cx| {
-      let (value, set_value) = create_signal(cx, 5);
-      let rendered = view! {
-          cx,
-          <div class="my big" class:a={move || value.get() > 10} class:red=true class:car={move || value.get() > 1}></div>
-      }.render_to_string();
-
-      assert_eq!(
-        rendered,
-        "<div class=\"my big red car\" id=\"0-0-0\"></div>"
-      );
-    });
   }
 }
