@@ -1,8 +1,8 @@
 //! MathML elements.
 
-use cfg_if::cfg_if;
 use super::{ElementDescriptor, HtmlElement};
 use crate::HydrationCtx;
+use cfg_if::cfg_if;
 use leptos_reactive::Scope;
 use std::borrow::Cow;
 cfg_if! {
@@ -60,7 +60,7 @@ macro_rules! generate_math_tags {
             #[cfg(all(target_arch = "wasm32", feature = "web"))]
             let element = if HydrationCtx::is_hydrating() {
               if let Some(el) = crate::document().get_element_by_id(
-                &format!("_{id}")
+                &format!("")
               ) {
                 #[cfg(debug_assertions)]
                 assert_eq!(
@@ -77,7 +77,7 @@ macro_rules! generate_math_tags {
 
                 el.unchecked_into()
               } else if let Ok(Some(el)) = crate::document().query_selector(
-                &format!("[leptos-hk=_{id}]")
+                &format!("[]")
               ) {
                 #[cfg(debug_assertions)]
                 assert_eq!(
@@ -96,7 +96,7 @@ macro_rules! generate_math_tags {
               } else {
                 gloo::console::warn!(
                   "element with id",
-                  format!("_{id}"),
+                  format!(""),
                   "not found, ignoring it for hydration"
                 );
 

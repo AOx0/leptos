@@ -5,11 +5,11 @@ use super::{ElementDescriptor, HtmlElement};
 use super::{HydrationKey, HTML_ELEMENT_DEREF_UNIMPLEMENTED_MSG};
 use crate::HydrationCtx;
 use leptos_reactive::Scope;
-use std::{borrow::Cow};
-#[cfg(all(target_arch = "wasm32", feature = "web"))]
-use wasm_bindgen::JsCast;
+use std::borrow::Cow;
 #[cfg(all(target_arch = "wasm32", feature = "web"))]
 use std::cell::LazyCell;
+#[cfg(all(target_arch = "wasm32", feature = "web"))]
+use wasm_bindgen::JsCast;
 
 macro_rules! generate_svg_tags {
   (
@@ -57,7 +57,7 @@ macro_rules! generate_svg_tags {
             #[cfg(all(target_arch = "wasm32", feature = "web"))]
             let element = if HydrationCtx::is_hydrating() {
               if let Some(el) = crate::document().get_element_by_id(
-                &format!("_{id}")
+                &format!("")
               ) {
                 #[cfg(debug_assertions)]
                 assert_eq!(
@@ -74,7 +74,7 @@ macro_rules! generate_svg_tags {
 
                 el.unchecked_into()
               } else if let Ok(Some(el)) = crate::document().query_selector(
-                &format!("[leptos-hk=_{id}]")
+                &format!("[]")
               ) {
                 #[cfg(debug_assertions)]
                 assert_eq!(
@@ -93,7 +93,7 @@ macro_rules! generate_svg_tags {
               } else {
                 gloo::console::warn!(
                   "element with id",
-                  format!("_{id}"),
+                  format!(""),
                   "not found, ignoring it for hydration"
                 );
 

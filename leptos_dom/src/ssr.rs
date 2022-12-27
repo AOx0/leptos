@@ -217,43 +217,16 @@ impl View {
             .map(|node| node.render_to_string_helper())
             .join("")
         };
-        cfg_if! {
-          if #[cfg(debug_assertions)] {
-            format!(r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
-              HydrationCtx::to_string(&node.id, false),
-              content(),
-              HydrationCtx::to_string(&node.id, true),
-              name = to_kebab_case(&node.name)
-            ).into()
-          } else {
-            format!(
-              r#"{}<l-m id="{}"></l-m>"#,
-              content(),
-              HydrationCtx::to_string(&node.id, true)
-            ).into()
-          }
-        }
+        format!(r#"{}"#, content()).into()
       }
       View::CoreComponent(node) => {
-        let (id, name, wrap, content) = match node {
+        let (.., content) = match node {
           CoreComponent::Unit(u) => (
             u.id.clone(),
             "",
             false,
-            Box::new(move || {
-              #[cfg(debug_assertions)]
-              {
-                format!(
-                  "<leptos-unit leptos id={}></leptos-unit>",
-                  HydrationCtx::to_string(&u.id, true)
-                )
-                .into()
-              }
-
-              #[cfg(not(debug_assertions))]
-              format!("<l-m id={}></l-m>", HydrationCtx::to_string(&u.id, true))
-                .into()
-            }) as Box<dyn FnOnce() -> Cow<'static, str>>,
+            Box::new(move || format!("").into())
+              as Box<dyn FnOnce() -> Cow<'static, str>>,
           ),
           CoreComponent::DynChild(node) => {
             let child = node.child.take();
@@ -297,29 +270,8 @@ impl View {
                   .into_iter()
                   .flatten()
                   .map(|node| {
-                    let id = node.id;
-
                     let content = || node.child.render_to_string_helper();
-
-                    #[cfg(debug_assertions)]
-                    {
-                      format!(
-                        "<leptos-each-item-start leptos \
-                         id=\"{}\"></\
-                         leptos-each-item-start>{}<leptos-each-item-end \
-                         leptos id=\"{}\"></leptos-each-item-end>",
-                        HydrationCtx::to_string(&id, false),
-                        content(),
-                        HydrationCtx::to_string(&id, true),
-                      )
-                    }
-
-                    #[cfg(not(debug_assertions))]
-                    format!(
-                      "{}<l-m id=\"{}\"></l-m>",
-                      content(),
-                      HydrationCtx::to_string(&id, true)
-                    )
+                    format!("{}", content())
                   })
                   .join("")
                   .into()
@@ -328,28 +280,7 @@ impl View {
           }
         };
 
-        if wrap {
-          cfg_if! {
-            if #[cfg(debug_assertions)] {
-              format!(
-                r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
-                HydrationCtx::to_string(&id, false),
-                content(),
-                HydrationCtx::to_string(&id, true),
-              ).into()
-            } else {
-              let _ = name;
-
-              format!(
-                r#"{}<l-m id="{}"></l-m>"#,
-                content(),
-                HydrationCtx::to_string(&id, true)
-              ).into()
-            }
-          }
-        } else {
-          content()
-        }
+        content()
       }
       View::Element(el) => {
         if let Some(prerendered) = el.prerendered {
@@ -389,41 +320,6 @@ impl View {
       View::Transparent(_) => Default::default(),
     }
   }
-}
-
-fn to_kebab_case(name: &str) -> String {
-  if name.is_empty() {
-    return String::new();
-  }
-
-  let mut new_name = String::with_capacity(name.len() + 8);
-
-  let mut chars = name.chars();
-
-  new_name.push(
-    chars
-      .next()
-      .map(|mut c| {
-        if c.is_ascii() {
-          c.make_ascii_lowercase();
-        }
-
-        c
-      })
-      .unwrap(),
-  );
-
-  for mut char in chars {
-    if char.is_ascii_uppercase() {
-      char.make_ascii_lowercase();
-
-      new_name.push('-');
-    }
-
-    new_name.push(char);
-  }
-
-  new_name
 }
 
 #[cfg(test)]
