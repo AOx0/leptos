@@ -2,6 +2,7 @@
 #![feature(once_cell, iter_intersperse, drain_filter, thread_local)]
 #![cfg_attr(not(feature = "stable"), feature(fn_traits))]
 #![cfg_attr(not(feature = "stable"), feature(unboxed_closures))]
+#![allow(dead_code, unused_variables, unused_mut)]
 
 //! The DOM implementation for `leptos`.
 

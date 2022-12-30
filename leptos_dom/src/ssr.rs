@@ -33,13 +33,14 @@ where
 
   runtime.dispose();
 
-  #[cfg(debug_assertions)]
-  {
-    format!("<style>[leptos]{{display:none;}}</style>{html}")
-  }
+  // #[cfg(debug_assertions)]
+  // {
+  //   format!("<style>[leptos]{{display:none;}}</style>{html}")
+  // }
 
-  #[cfg(not(debug_assertions))]
-  format!("<style>l-m{{display:none;}}</style>{html}")
+  // #[cfg(not(debug_assertions))]
+  // format!("<style>l-m{{display:none;}}</style>{html}")
+  html.to_string()
 }
 
 /// Renders a function to a stream of HTML strings.
@@ -242,22 +243,23 @@ impl View {
             .map(|node| node.render_to_string_helper())
             .join("")
         };
-        cfg_if! {
-          if #[cfg(debug_assertions)] {
-            format!(r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
-              HydrationCtx::to_string(&node.id, false),
-              content(),
-              HydrationCtx::to_string(&node.id, true),
-              name = to_kebab_case(&node.name)
-            ).into()
-          } else {
-            format!(
-              r#"{}<l-m id="{}"></l-m>"#,
-              content(),
-              HydrationCtx::to_string(&node.id, true)
-            ).into()
-          }
-        }
+        // cfg_if! {
+        //   if #[cfg(debug_assertions)] {
+        //     format!(r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
+        //       HydrationCtx::to_string(&node.id, false),
+        //       content(),
+        //       HydrationCtx::to_string(&node.id, true),
+        //       name = to_kebab_case(&node.name)
+        //     ).into()
+        //   } else {
+        //     format!(
+        //       r#"{}<l-m id="{}"></l-m>"#,
+        //       content(),
+        //       HydrationCtx::to_string(&node.id, true)
+        //     ).into()
+        //   }
+        // }
+        format!("{}", content()).into()
       }
       View::CoreComponent(node) => {
         let (id, name, wrap, content) = match node {
@@ -266,18 +268,19 @@ impl View {
             "",
             false,
             Box::new(move || {
-              #[cfg(debug_assertions)]
-              {
-                format!(
-                  "<leptos-unit leptos id={}></leptos-unit>",
-                  HydrationCtx::to_string(&u.id, true)
-                )
-                .into()
-              }
+              // #[cfg(debug_assertions)]
+              // {
+              //   format!(
+              //     "<leptos-unit leptos id={}></leptos-unit>",
+              //     HydrationCtx::to_string(&u.id, true)
+              //   )
+              //   .into()
+              // }
 
-              #[cfg(not(debug_assertions))]
-              format!("<l-m id={}></l-m>", HydrationCtx::to_string(&u.id, true))
-                .into()
+              // #[cfg(not(debug_assertions))]
+              // format!("<l-m id={}></l-m>", HydrationCtx::to_string(&u.id, true))
+              //   .into()
+              "".to_string().into()
             }) as Box<dyn FnOnce() -> Cow<'static, str>>,
           ),
           CoreComponent::DynChild(node) => {
@@ -287,26 +290,27 @@ impl View {
               "dyn-child",
               true,
               Box::new(move || {
-                if let Some(child) = *child {
-                  // On debug builds, `DynChild` has two marker nodes,
-                  // so there is no way for the text to be merged with
-                  // surrounding text when the browser parses the HTML,
-                  // but in release, `DynChild` only has a trailing marker,
-                  // and the browser automatically merges the dynamic text
-                  // into one single node, so we need to artificially make the
-                  // browser create the dynamic text as it's own text node
-                  if let View::Text(t) = child {
-                    if !cfg!(debug_assertions) {
-                      format!("<!>{}", t.content).into()
-                    } else {
-                      t.content
-                    }
-                  } else {
-                    child.render_to_string_helper()
-                  }
-                } else {
-                  "".into()
-                }
+                // if let Some(child) = *child {
+                //   // On debug builds, `DynChild` has two marker nodes,
+                //   // so there is no way for the text to be merged with
+                //   // surrounding text when the browser parses the HTML,
+                //   // but in release, `DynChild` only has a trailing marker,
+                //   // and the browser automatically merges the dynamic text
+                //   // into one single node, so we need to artificially make the
+                //   // browser create the dynamic text as it's own text node
+                //   if let View::Text(t) = child {
+                //     if !cfg!(debug_assertions) {
+                //       format!("<!>{}", t.content).into()
+                //     } else {
+                //       t.content
+                //     }
+                //   } else {
+                //     child.render_to_string_helper()
+                //   }
+                // } else {
+                //   "".into()
+                // }
+                format!("").into()
               }) as Box<dyn FnOnce() -> Cow<'static, str>>,
             )
           }
@@ -324,27 +328,28 @@ impl View {
                   .map(|node| {
                     let id = node.id;
 
-                    let content = || node.child.render_to_string_helper();
+                    // let content = || node.child.render_to_string_helper();
+                    node.child.render_to_string_helper()
 
-                    #[cfg(debug_assertions)]
-                    {
-                      format!(
-                        "<leptos-each-item-start leptos \
-                         id=\"{}\"></\
-                         leptos-each-item-start>{}<leptos-each-item-end \
-                         leptos id=\"{}\"></leptos-each-item-end>",
-                        HydrationCtx::to_string(&id, false),
-                        content(),
-                        HydrationCtx::to_string(&id, true),
-                      )
-                    }
+                    // #[cfg(debug_assertions)]
+                    // {
+                    //   format!(
+                    //     "<leptos-each-item-start leptos \
+                    //      id=\"{}\"></\
+                    //      leptos-each-item-start>{}<leptos-each-item-end \
+                    //      leptos id=\"{}\"></leptos-each-item-end>",
+                    //     HydrationCtx::to_string(&id, false),
+                    //     content(),
+                    //     HydrationCtx::to_string(&id, true),
+                    //   )
+                    // }
 
-                    #[cfg(not(debug_assertions))]
-                    format!(
-                      "{}<l-m id=\"{}\"></l-m>",
-                      content(),
-                      HydrationCtx::to_string(&id, true)
-                    )
+                    // #[cfg(not(debug_assertions))]
+                    // format!(
+                    //   "{}<l-m id=\"{}\"></l-m>",
+                    //   content(),
+                    //   HydrationCtx::to_string(&id, true)
+                    // )
                   })
                   .join("")
                   .into()
@@ -353,28 +358,29 @@ impl View {
           }
         };
 
-        if wrap {
-          cfg_if! {
-            if #[cfg(debug_assertions)] {
-              format!(
-                r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
-                HydrationCtx::to_string(&id, false),
-                content(),
-                HydrationCtx::to_string(&id, true),
-              ).into()
-            } else {
-              let _ = name;
+        // if wrap {
+        //   cfg_if! {
+        //     if #[cfg(debug_assertions)] {
+        //       format!(
+        //         r#"<leptos-{name}-start leptos id="{}"></leptos-{name}-start>{}<leptos-{name}-end leptos id="{}"></leptos-{name}-end>"#,
+        //         HydrationCtx::to_string(&id, false),
+        //         content(),
+        //         HydrationCtx::to_string(&id, true),
+        //       ).into()
+        //     } else {
+        //       let _ = name;
 
-              format!(
-                r#"{}<l-m id="{}"></l-m>"#,
-                content(),
-                HydrationCtx::to_string(&id, true)
-              ).into()
-            }
-          }
-        } else {
-          content()
-        }
+        //       format!(
+        //         r#"{}<l-m id="{}"></l-m>"#,
+        //         content(),
+        //         HydrationCtx::to_string(&id, true)
+        //       ).into()
+        //     }
+        //   }
+        // } else {
+        //   content()
+        // }
+        content()
       }
       View::Element(el) => {
         if let Some(prerendered) = el.prerendered {

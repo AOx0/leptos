@@ -617,11 +617,11 @@ impl<El: ElementDescriptor> IntoView for HtmlElement<El> {
       let mut element = Element::new(element);
       let children = children;
 
-      if attrs.iter_mut().any(|(name, _)| name == "id") {
-        attrs.push(("leptos-hk".into(), format!("_{}", id).into()));
-      } else {
-        attrs.push(("id".into(), format!("_{}", id).into()));
-      }
+      // if attrs.iter_mut().any(|(name, _)| name == "id") {
+      //   attrs.push(("leptos-hk".into(), format!("_{}", id).into()));
+      // } else {
+      //   attrs.push(("id".into(), format!("_{}", id).into()));
+      // }
 
       element.attrs = attrs;
       element.children.extend(children);
