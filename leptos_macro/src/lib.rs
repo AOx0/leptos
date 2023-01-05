@@ -252,7 +252,7 @@ pub fn view(tokens: TokenStream) -> TokenStream {
 /// When you use the component somewhere else, the names of its arguments are the names
 /// of the properties you use in the [view](mod@view) macro.
 ///
-/// Every component function should have the return type `-> impl [IntoView](leptos_dom::IntoView)`.
+/// Every component function should have the return type `-> impl IntoView`.
 ///
 /// You can add Rust doc comments to component function arguments and the macro will use them to
 /// generate documentation for the component.
@@ -386,6 +386,51 @@ pub fn view(tokens: TokenStream) -> TokenStream {
 ///   }
 /// }
 /// ```
+///
+/// ## Customizing Properties
+/// You can use the `#[prop]` attribute on individual component properties (function arguments) to
+/// customize the types that component property can receive. You can use the following attributes:
+/// * `#[prop(into)]`: This will call `.into()` on any value passed into the component prop. (For example,
+///   you could apply `#[prop(into)]` to a prop that takes [Signal](leptos_reactive::Signal), which would
+///   allow users to pass a [ReadSignal](leptos_reactive::ReadSignal) or [RwSignal](leptos_reactive::RwSignal)
+///   and automatically convert it.)
+/// * `#[prop(optional)]`: If the user does not specify this property when they use the component,
+///   it will be set to its default value. If the property type is `Option<T>`, values should be passed
+///   as `name=T` and will be received as `Some(T)`.
+/// * `#[prop(optional_no_strip)]`: The same as `optional`, but requires values to be passed as `None` or
+///   `Some(T)` explicitly. This means that the optional property can be omitted (and be `None`), or explicitly
+///   specified as either `None` or `Some(T)`.
+/// ```rust
+/// # use leptos::*;
+///
+/// #[component]
+/// pub fn MyComponent(
+///   cx: Scope,
+///   #[prop(into)]
+///   name: String,
+///   #[prop(optional)]
+///   optional_value: Option<i32>,
+///   #[prop(optional_no_strip)]
+///   optional_no_strip: Option<i32>
+/// ) -> impl IntoView {
+///   // whatever UI you need
+/// }
+///
+///  #[component]
+/// pub fn App(cx: Scope) -> impl IntoView {
+///   view! { cx,
+///     <MyComponent
+///       name="Greg" // automatically converted to String with `.into()`
+///       optional_value=42 // received as `Some(42)`
+///       optional_no_strip=Some(42) // received as `Some(42)`
+///     />
+///     <MyComponent
+///       name="Bob" // automatically converted to String with `.into()`
+///       // optional values can both be omitted, and received as `None`
+///     />
+///   }
+/// }
+/// ```
 #[proc_macro_error::proc_macro_error]
 #[proc_macro_attribute]
 pub fn component(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
@@ -413,6 +458,55 @@ pub fn component(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Declares that a function is a [server function](leptos_server). This means that
+/// its body will only run on the server, i.e., when the `ssr` feature is enabled.
+///
+/// If you call a server function from the client (i.e., when the `csr` or `hydrate` features
+/// are enabled), it will instead make a network request to the server.
+///
+/// You can specify one, two, or three arguments to the server function:
+/// 1. **Required**: A type name that will be used to identify and register the server function
+///   (e.g., `MyServerFn`).
+/// 2. *Optional*: A URL prefix at which the function will be mounted when it’s registered
+///   (e.g., `"/api"`). Defaults to `"/"`.
+/// 3. *Optional*: either `"Cbor"` (specifying that it should use the binary `cbor` format for
+///   serialization) or `"Url"` (specifying that it should be use a URL-encoded form-data string).
+///   Defaults to `"Url"`. If you want to use this server function to power an
+///   [ActionForm](leptos_router::ActionForm) the encoding must be `"Url"`.
+///
+/// The server function itself can take any number of arguments, each of which should be serializable
+/// and deserializable with `serde`. Optionally, its first argument can be a Leptos [Scope](leptos::Scope),
+/// which will be injected *on the server side.* This can be used to inject the raw HTTP request or other
+/// server-side context into the server function.
+///
+/// ```ignore
+/// # use leptos::*; use serde::{Serialize, Deserialize};
+/// # #[derive(Serialize, Deserialize)]
+/// # pub struct Post { }
+/// #[server(ReadPosts, "/api")]
+/// pub async fn read_posts(how_many: u8, query: String) -> Result<Vec<Post>, ServerFnError> {
+///   // do some work on the server to access the database
+///   todo!()   
+/// }
+/// ```
+///
+/// Note the following:
+/// - You must **register** the server function by calling `T::register()` somewhere in your main function.
+/// - **Server functions must be `async`.** Even if the work being done inside the function body
+///   can run synchronously on the server, from the client’s perspective it involves an asynchronous
+///   function call.
+/// - **Server functions must return `Result<T, ServerFnError>`.** Even if the work being done
+///   inside the function body can’t fail, the processes of serialization/deserialization and the
+///   network call are fallible.
+/// - **Return types must be [Serializable](leptos_reactive::Serializable).**
+///   This should be fairly obvious: we have to serialize arguments to send them to the server, and we
+///   need to deserialize the result to return it to the client.
+/// - **Arguments must be implement [serde::Serialize].** They are serialized as an `application/x-www-form-urlencoded`
+///   form data using [`serde_urlencoded`](https://docs.rs/serde_urlencoded/latest/serde_urlencoded/) or as `application/cbor`
+///   using [`cbor`](https://docs.rs/cbor/latest/cbor/).
+/// - **The [Scope](leptos_reactive::Scope) comes from the server.** Optionally, the first argument of a server function
+///   can be a Leptos [Scope](leptos_reactive::Scope). This scope can be used to inject dependencies like the HTTP request
+///   or response or other server-only dependencies, but it does *not* have access to reactive state that exists in the client.
 #[proc_macro_attribute]
 pub fn server(args: proc_macro::TokenStream, s: TokenStream) -> TokenStream {
     match server_macro_impl(args, s.into()) {
