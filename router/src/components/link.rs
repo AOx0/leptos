@@ -1,4 +1,3 @@
-use cfg_if::cfg_if;
 use leptos::leptos_dom::IntoView;
 use leptos::*;
 
@@ -58,7 +57,7 @@ pub fn A<H>(
     #[prop(optional, into)]
     class: Option<MaybeSignal<String>>,
     /// The nodes or elements to be shown inside the link.
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView
 where
     H: ToHref + 'static,
@@ -83,29 +82,15 @@ where
         }
     });
 
-    cfg_if! {
-        if #[cfg(any(feature = "csr", feature = "hydrate"))] {
-            view! { cx,
-                <html::a
-                    href=move || href.get().unwrap_or_default()
-                    prop:state={state.map(|s| s.to_js_value())}
-                    prop:replace={replace}
-                    aria-current=move || if is_active.get() { Some("page") } else { None }
-                    class=move || class.as_ref().map(|class| class.get())
-                >
-                    {children(cx)}
-                </html::a>
-            }
-        } else {
-            view! { cx,
-                <html::a
-                    href=move || href.get().unwrap_or_default()
-                    aria-current=move || if is_active.get() { Some("page") } else { None }
-                    class=move || class.as_ref().map(|class| class.get())
-                >
-                    {children(cx)}
-                </html::a>
-            }
-        }
+    view! { cx,
+        <a
+            href=move || href.get().unwrap_or_default()
+            prop:state={state.map(|s| s.to_js_value())}
+            prop:replace={replace}
+            aria-current=move || if is_active.get() { Some("page") } else { None }
+            class=move || class.as_ref().map(|class| class.get())
+        >
+            {children(cx)}
+        </a>
     }
 }

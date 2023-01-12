@@ -22,7 +22,7 @@ use crate::{
 pub fn Routes(
     cx: Scope,
     #[prop(optional)] base: Option<String>,
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView {
     let router = use_context::<RouterContext>(cx).unwrap_or_else(|| {
         log::warn!("<Routes/> component should be nested within a <Router/>.");
@@ -42,12 +42,18 @@ pub fn Routes(
         })
         .cloned()
         .collect::<Vec<_>>();
+
     create_branches(
         &children,
         &base.unwrap_or_default(),
         &mut Vec::new(),
         &mut branches,
     );
+
+    #[cfg(feature = "ssr")]
+    if let Some(context) = use_context::<crate::PossibleBranchContext>(cx) {
+        *context.0.borrow_mut() = branches.clone();
+    }
 
     // whenever path changes, update matches
     let matches = create_memo(cx, {
@@ -138,10 +144,9 @@ pub fn Routes(
                             }
                         });
 
-                        if disposers.borrow().len() > i + 1 {
+                        if disposers.borrow().len() > i {
                             let mut disposers = disposers.borrow_mut();
-                            let old_route_disposer =
-                                std::mem::replace(&mut disposers[i + 1], disposer);
+                            let old_route_disposer = std::mem::replace(&mut disposers[i], disposer);
                             old_route_disposer.dispose();
                         } else {
                             disposers.borrow_mut().push(disposer);

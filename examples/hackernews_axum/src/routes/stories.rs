@@ -134,7 +134,7 @@ fn Story(cx: Scope, story: api::Story) -> impl IntoView {
                     view! { cx,
                         <span>
                             {"by "}
-                            {story.user.map(|user| view ! { cx, <A href=format!("/users/{}", user)>{user.clone()}</A>})}
+                            {story.user.map(|user| view ! { cx, <A href=format!("/users/{user}")>{user.clone()}</A>})}
                             {format!(" {} | ", story.time_ago)}
                             <A href=format!("/stories/{}", story.id)>
                                 {if story.comments_count.unwrap_or_default() > 0 {

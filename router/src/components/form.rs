@@ -30,13 +30,15 @@ pub fn Form<A>(
     error: Option<RwSignal<Option<Box<dyn Error>>>>,
     /// A callback will be called with the [FormData](web_sys::FormData) when the form is submitted.
     #[prop(optional)]
+    #[allow(clippy::type_complexity)]
     on_form_data: Option<Rc<dyn Fn(&web_sys::FormData)>>,
     /// A callback will be called with the [Response](web_sys::Response) the server sends in response
     /// to a form submission.
     #[prop(optional)]
+    #[allow(clippy::type_complexity)]
     on_response: Option<Rc<dyn Fn(&web_sys::Response)>>,
     /// Component children; should include the HTML of the form elements.
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView
 where
     A: ToHref + 'static,
@@ -134,7 +136,7 @@ pub fn ActionForm<I, O>(
     /// manually using [leptos_server::Action::using_server_fn].
     action: Action<I, Result<O, ServerFnError>>,
     /// Component children; should include the HTML of the form elements.
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView
 where
     I: Clone + ServerFn + 'static,
@@ -208,7 +210,7 @@ pub fn MultiActionForm<I, O>(
     /// manually using [leptos_server::Action::using_server_fn].
     action: MultiAction<I, Result<O, ServerFnError>>,
     /// Component children; should include the HTML of the form elements.
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView
 where
     I: Clone + ServerFn + 'static,

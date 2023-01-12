@@ -66,11 +66,13 @@
 //! });
 //! ```
 
+#[cfg_attr(debug_assertions, macro_use)]
+pub extern crate tracing;
+
 mod context;
 mod effect;
 mod hydration;
 mod memo;
-
 mod resource;
 mod runtime;
 mod scope;
@@ -79,7 +81,9 @@ mod serialization;
 mod signal;
 mod signal_wrappers_read;
 mod signal_wrappers_write;
+mod slice;
 mod spawn;
+mod spawn_microtask;
 mod stored_value;
 mod suspense;
 
@@ -95,7 +99,9 @@ pub use serialization::*;
 pub use signal::*;
 pub use signal_wrappers_read::*;
 pub use signal_wrappers_write::*;
+pub use slice::*;
 pub use spawn::*;
+pub use spawn_microtask::*;
 pub use stored_value::*;
 pub use suspense::*;
 

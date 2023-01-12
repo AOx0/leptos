@@ -1,5 +1,6 @@
 use leptos::*;
 use leptos_router::*;
+use leptos_meta::*;
 
 #[cfg(feature = "ssr")]
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -44,6 +45,7 @@ pub async fn clear_server_count() -> Result<i32, ServerFnError> {
 }
 #[component]
 pub fn Counters(cx: Scope) -> impl IntoView {
+    provide_meta_context(cx);
     view! {
         cx,
         <Router>
@@ -59,6 +61,7 @@ pub fn Counters(cx: Scope) -> impl IntoView {
                     <li><A href="multi">"Multi-User"</A></li>
                 </ul>
             </nav>
+            <Link rel="shortcut icon" type_="image/ico" href="/favicon.ico"/>
             <main>
                 <Routes>
                     <Route path="" view=|cx| view! {
@@ -209,8 +212,8 @@ pub fn MultiuserCounter(cx: Scope) -> impl IntoView {
     };
 
     #[cfg(feature = "ssr")]
-    let multiplayer_value =
-        create_signal_from_stream(cx, futures::stream::once(Box::pin(async { 0.to_string() })));
+    let (multiplayer_value, _) =
+        create_signal(cx, None::<i32>);
 
     view! {
         cx,

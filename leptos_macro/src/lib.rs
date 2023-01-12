@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "stable"), feature(proc_macro_span))]
+#![forbid(unsafe_code)]
 
 #[macro_use]
 extern crate proc_macro_error;
@@ -171,6 +172,25 @@ mod server;
 /// let (count, set_count) = create_signal(cx, 2);
 /// // `hidden-div-25` is invalid at the moment
 /// view! { cx, <div class:hidden-div-25={move || count() < 3}>"Now you see me, now you don’t."</div> }
+/// # ;
+/// # }
+/// # });
+/// ```
+///
+/// However, you can pass arbitrary class names using the syntax `class=("name", value)`.
+/// ```rust
+/// # use leptos::*;
+/// # run_scope(create_runtime(), |cx| {
+/// # if !cfg!(any(feature = "csr", feature = "hydrate")) {
+/// let (count, set_count) = create_signal(cx, 2);
+/// // this allows you to use CSS frameworks that include complex class names
+/// view! { cx,
+///   <div
+///     class=("is-[this_-_really]-necessary-42", move || count() < 3)
+///   >
+///     "Now you see me, now you don’t."
+///   </div>
+/// }
 /// # ;
 /// # }
 /// # });
@@ -358,12 +378,12 @@ pub fn view(tokens: TokenStream) -> TokenStream {
 /// ```
 ///
 /// 5. You can access the children passed into the component with the `children` property, which takes
-///    an argument of the form `Box<dyn Fn(Scope) -> Fragment>`.
+///    an argument of the form `Box<dyn FnOnce(Scope) -> Fragment>`.
 ///
 /// ```
 /// # use leptos::*;
 /// #[component]
-/// fn ComponentWithChildren(cx: Scope, children: Box<dyn Fn(Scope) -> Fragment>) -> impl IntoView {
+/// fn ComponentWithChildren(cx: Scope, children: Box<dyn FnOnce(Scope) -> Fragment>) -> impl IntoView {
 ///   view! {
 ///     cx,
 ///     <ul>

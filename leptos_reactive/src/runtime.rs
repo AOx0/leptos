@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 use crate::{
     hydration::SharedContext, serialization::Serializable, AnyEffect, AnyResource, Effect,
     EffectId, Memo, ReadSignal, ResourceId, ResourceState, RwSignal, Scope, ScopeDisposer, ScopeId,
@@ -112,6 +113,7 @@ impl RuntimeId {
         ret
     }
 
+    #[track_caller]
     pub(crate) fn create_signal<T>(self, value: T) -> (ReadSignal<T>, WriteSignal<T>)
     where
         T: Any + 'static,
@@ -127,11 +129,15 @@ impl RuntimeId {
                 runtime: self,
                 id,
                 ty: PhantomData,
+                #[cfg(debug_assertions)]
+                defined_at: std::panic::Location::caller(),
             },
             WriteSignal {
                 runtime: self,
                 id,
                 ty: PhantomData,
+                #[cfg(debug_assertions)]
+                defined_at: std::panic::Location::caller(),
             },
         )
     }
@@ -150,17 +156,25 @@ impl RuntimeId {
             runtime: self,
             id,
             ty: PhantomData,
+            #[cfg(debug_assertions)]
+            defined_at: std::panic::Location::caller(),
         }
     }
 
+    #[track_caller]
     pub(crate) fn create_effect<T>(self, f: impl Fn(Option<T>) -> T + 'static) -> EffectId
     where
         T: Any + 'static,
     {
+        #[cfg(debug_assertions)]
+        let defined_at = std::panic::Location::caller();
+
         with_runtime(self, |runtime| {
             let effect = Effect {
                 f,
                 value: RefCell::new(None),
+                #[cfg(debug_assertions)]
+                defined_at,
             };
             let id = { runtime.effects.borrow_mut().insert(Rc::new(effect)) };
             id.run::<T>(self);
@@ -168,10 +182,14 @@ impl RuntimeId {
         })
     }
 
+    #[track_caller]
     pub(crate) fn create_memo<T>(self, f: impl Fn(Option<&T>) -> T + 'static) -> Memo<T>
     where
         T: PartialEq + Any + 'static,
     {
+        #[cfg(debug_assertions)]
+        let defined_at = std::panic::Location::caller();
+
         let (read, write) = self.create_signal(None);
 
         self.create_effect(move |_| {
@@ -186,7 +204,11 @@ impl RuntimeId {
             }
         });
 
-        Memo(read)
+        Memo(
+            read,
+            #[cfg(debug_assertions)]
+            defined_at,
+        )
     }
 }
 
@@ -301,10 +323,12 @@ impl Runtime {
         self.resources
             .borrow()
             .iter()
-            .filter_map(|(resource_id, res)| if matches!(res, AnyResource::Serializable(_)) {
-                Some(resource_id)
-            } else {
-                None
+            .filter_map(|(resource_id, res)| {
+                if matches!(res, AnyResource::Serializable(_)) {
+                    Some(resource_id)
+                } else {
+                    None
+                }
             })
             .collect()
     }

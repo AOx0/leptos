@@ -1,8 +1,11 @@
+#![forbid(unsafe_code)]
+
 use axum::{
     body::{Body, Bytes, Full, StreamBody},
     extract::Path,
     http::{header::HeaderName, header::HeaderValue, HeaderMap, Request, StatusCode},
     response::IntoResponse,
+    routing::get,
 };
 use futures::{Future, SinkExt, Stream, StreamExt};
 use http::{header, method::Method, uri::Uri, version::Version, Response};
@@ -11,7 +14,7 @@ use leptos::*;
 use leptos_meta::MetaContext;
 use leptos_router::*;
 use std::{io, pin::Pin, sync::Arc};
-use tokio::{sync::RwLock, task::spawn_blocking};
+use tokio::{sync::RwLock, task::spawn_blocking, task::LocalSet};
 
 /// A struct to hold the parts of the incoming Request. Since `http::Request` isn't cloneable, we're forced
 /// to construct this for Leptos to use in Axum
@@ -97,7 +100,7 @@ pub async fn generate_request_parts(req: Request<Body>) -> RequestParts {
         uri: parts.uri,
         headers: parts.headers,
         version: parts.version,
-        body: body.clone(),
+        body,
     }
 }
 
@@ -139,7 +142,7 @@ pub async fn handle_server_fns(
     req: Request<Body>,
 ) -> impl IntoResponse {
     // Axum Path extractor doesn't remove the first slash from the path, while Actix does
-    let fn_name: String = match fn_name.strip_prefix("/") {
+    let fn_name: String = match fn_name.strip_prefix('/') {
         Some(path) => path.to_string(),
         None => fn_name,
     };
@@ -180,15 +183,12 @@ pub async fn handle_server_fns(
                                     let res_options_outer = res_options.unwrap().0;
                                     let res_options_inner = res_options_outer.read().await;
                                     let (status, mut res_headers) = (
-                                        res_options_inner.status.clone(),
+                                        res_options_inner.status,
                                         res_options_inner.headers.clone(),
                                     );
 
-                                    match res.headers_mut() {
-                                        Some(header_ref) => {
-                                            header_ref.extend(res_headers.drain());
-                                        }
-                                        None => (),
+                                    if let Some(header_ref) = res.headers_mut() {
+                                           header_ref.extend(res_headers.drain());
                                     };
 
                                     if accept_header == Some("application/json")
@@ -237,9 +237,9 @@ pub async fn handle_server_fns(
                             Response::builder()
                                 .status(StatusCode::BAD_REQUEST)
                                 .body(Full::from(
-                                    format!("Could not find a server function at the route {:?}. \
+                                    format!("Could not find a server function at the route {fn_name}. \
                                     \n\nIt's likely that you need to call ServerFn::register() on the \
-                                    server function type, somewhere in your `main` function.", fn_name)
+                                    server function type, somewhere in your `main` function." )
                                 ))
                         }
                         .expect("could not build Response");
@@ -322,33 +322,17 @@ where
             async move {
                 // Need to get the path and query string of the Request
                 let path = req.uri();
-                let query = path.query();
 
-                let full_path;
-                if let Some(query) = query {
-                    full_path = "http://leptos".to_string() + &path.to_string() + "?" + query
-                } else {
-                    full_path = "http://leptos".to_string() + &path.to_string()
-                }
+                let full_path = format!("http://leptos.dev{path}");
 
-                let site_root = &options.site_root;
                 let pkg_path = &options.site_pkg_dir;
-
-                // We need to do some logic to check if the site_root is pkg
-                // if it is, then we need to not add pkg_path. This would mean
-                // the site was built with cargo run and not cargo-leptos
-                let bundle_path = match site_root.as_ref() {
-                    "pkg" => "pkg".to_string(),
-                    _ => format!("{}/{}", site_root, pkg_path),
-                };
-
                 let output_name = &options.output_name;
 
                 // Because wasm-pack adds _bg to the end of the WASM filename, and we want to mantain compatibility with it's default options
-                // we add _bg to the wasm files if cargo-leptos doesn't set the env var OUTPUT_NAME
+                // we add _bg to the wasm files if cargo-leptos doesn't set the env var LEPTOS_OUTPUT_NAME
                 // Otherwise we need to add _bg because wasm_pack always does. This is not the same as options.output_name, which is set regardless
                 let mut wasm_output_name = output_name.clone();
-                if std::env::var("OUTPUT_NAME").is_err() {
+                if std::env::var("LEPTOS_OUTPUT_NAME").is_err() {
                     wasm_output_name.push_str("_bg");
                 }
 
@@ -361,7 +345,7 @@ where
                         <script crossorigin="">(function () {{
                             var ws = new WebSocket('ws://{site_ip}:{reload_port}/live_reload');
                             ws.onmessage = (ev) => {{
-                                let msg = JSON.parse(event.data);
+                                let msg = JSON.parse(ev.data);
                                 if (msg.all) window.location.reload();
                                 if (msg.css) {{
                                     const link = document.querySelector("link#leptos");
@@ -388,9 +372,9 @@ where
                         <head>
                             <meta charset="utf-8"/>
                             <meta name="viewport" content="width=device-width, initial-scale=1"/>
-                            <link rel="modulepreload" href="/{bundle_path}/{output_name}.js">
-                            <link rel="preload" href="/{bundle_path}/{wasm_output_name}.wasm" as="fetch" type="application/wasm" crossorigin="">
-                            <script type="module">import init, {{ hydrate }} from '/{bundle_path}/{output_name}.js'; init('/{bundle_path}/{wasm_output_name}.wasm').then(hydrate);</script>
+                            <link rel="modulepreload" href="/{pkg_path}/{output_name}.js">
+                            <link rel="preload" href="/{pkg_path}/{wasm_output_name}.wasm" as="fetch" type="application/wasm" crossorigin="">
+                            <script type="module">import init, {{ hydrate }} from '/{pkg_path}/{output_name}.js'; init('/{pkg_path}/{wasm_output_name}.wasm').then(hydrate);</script>
                             {leptos_autoreload}
                             "#
                 );
@@ -487,15 +471,96 @@ where
                     Box::pin(complete_stream) as PinnedHtmlStream
                 ));
 
-                match res_options.status {
-                    Some(status) => *res.status_mut() = status,
-                    None => (),
-                };
+                if let Some(status) = res_options.status {
+                    *res.status_mut() = status
+                }
                 let mut res_headers = res_options.headers.clone();
                 res.headers_mut().extend(res_headers.drain());
 
                 res
             }
         })
+    }
+}
+
+/// Generates a list of all routes defined in Leptos's Router in your app. We can then use this to automatically
+/// create routes in Axum's Router without having to use wildcard matching or fallbacks. Takes in your root app Element
+/// as an argument so it can walk you app tree. This version is tailored to generate Axum compatible paths.
+pub async fn generate_route_list<IV>(app_fn: impl FnOnce(Scope) -> IV + 'static) -> Vec<String>
+where
+    IV: IntoView + 'static,
+{
+    #[derive(Default, Clone, Debug)]
+    pub struct Routes(pub Arc<RwLock<Vec<String>>>);
+
+    let routes = Routes::default();
+    let routes_inner = routes.clone();
+
+    let local = LocalSet::new();
+    // Run the local task set.
+
+    local
+        .run_until(async move {
+            tokio::task::spawn_local(async move {
+                let routes = leptos_router::generate_route_list_inner(app_fn);
+                let mut writable = routes_inner.0.write().await;
+                *writable = routes;
+            })
+            .await
+            .unwrap();
+        })
+        .await;
+
+    let routes = routes.0.read().await.to_owned();
+    // Axum's Router defines Root routes as "/" not ""
+    let routes: Vec<String> = routes
+        .iter()
+        .map(|s| {
+            if s.is_empty() {
+                return "/".to_string();
+            }
+            s.to_string()
+        })
+        .collect();
+
+    if routes.is_empty() {
+        vec!["/".to_string()]
+    } else {
+        routes
+    }
+}
+
+/// This trait allows one to pass a list of routes and a render function to Axum's router, letting us avoid
+/// having to use wildcards or manually define all routes in multiple places.
+pub trait LeptosRoutes {
+    fn leptos_routes<IV>(
+        self,
+        options: LeptosOptions,
+        paths: Vec<String>,
+        app_fn: impl Fn(leptos::Scope) -> IV + Clone + Send + 'static,
+    ) -> Self
+    where
+        IV: IntoView + 'static;
+}
+/// The default implementation of `LeptosRoutes` which takes in a list of paths, and dispatches GET requests
+/// to those paths to Leptos's renderer.
+impl LeptosRoutes for axum::Router {
+    fn leptos_routes<IV>(
+        self,
+        options: LeptosOptions,
+        paths: Vec<String>,
+        app_fn: impl Fn(leptos::Scope) -> IV + Clone + Send + 'static,
+    ) -> Self
+    where
+        IV: IntoView + 'static,
+    {
+        let mut router = self;
+        for path in paths.iter() {
+            router = router.route(
+                path,
+                get(render_app_to_stream(options.clone(), app_fn.clone())),
+            );
+        }
+        router
     }
 }

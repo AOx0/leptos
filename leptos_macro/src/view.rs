@@ -1,6 +1,6 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{spanned::Spanned, ExprPath};
+use syn::{spanned::Spanned, Expr, ExprLit, ExprPath, Lit};
 use syn_rsx::{Node, NodeAttribute, NodeElement, NodeName};
 
 use crate::{is_component_node, Mode};
@@ -409,7 +409,9 @@ fn set_class_attribute_ssr(
         .filter_map(|a| {
             if let Node::Attribute(a) = a {
                 if a.key.to_string() == "class" {
-                    if a.value.as_ref().and_then(value_to_string).is_some() {
+                    if a.value.as_ref().and_then(value_to_string).is_some()
+                        || fancy_class_name(&a.key.to_string(), cx, a).is_some()
+                    {
                         None
                     } else {
                         Some((a.key.span(), &a.value))
@@ -429,6 +431,14 @@ fn set_class_attribute_ssr(
         .filter_map(|node| {
             if let Node::Attribute(node) = node {
                 let name = node.key.to_string();
+                if name == "class" {
+                    return if let Some((_, name, value)) = fancy_class_name(&name, cx, node) {
+                        let span = node.key.span();
+                        Some((span, name, value))
+                    } else {
+                        None
+                    };
+                }
                 if name.starts_with("class:") || name.starts_with("class-") {
                     let name = if name.starts_with("class:") {
                         name.replacen("class:", "", 1)
@@ -557,8 +567,9 @@ fn element_to_tokens(cx: &Ident, node: &NodeElement, mut parent_type: TagType) -
             let name = &node.name;
             match parent_type {
                 TagType::Unknown => {
-                    proc_macro_error::emit_warning!(name.span(), "The view macro is assuming this is an HTML element, \
-                    but it is ambiguous; if it is an SVG or MathML element, prefix with svg:: or math::");
+                    // We decided this warning was too aggressive, but I'll leave it here in case we want it later
+                    /* proc_macro_error::emit_warning!(name.span(), "The view macro is assuming this is an HTML element, \
+                    but it is ambiguous; if it is an SVG or MathML element, prefix with svg:: or math::"); */
                     quote! {
                         leptos::leptos_dom::#name(#cx)
                     }
@@ -752,6 +763,12 @@ fn attribute_to_tokens(cx: &Ident, node: &NodeAttribute) -> TokenStream {
         }
     } else {
         let name = name.replacen("attr:", "", 1);
+
+        if let Some((fancy, _, _)) = fancy_class_name(&name, cx, node) {
+            return fancy;
+        }
+
+        // all other attributes
         let value = match node.value.as_ref() {
             Some(value) => {
                 let value = value.as_ref();
@@ -866,7 +883,11 @@ fn ident_from_tag_name(tag_name: &NodeName) -> Ident {
             .last()
             .map(|segment| segment.ident.clone())
             .expect("element needs to have a name"),
-        NodeName::Block(_) => panic!("blocks not allowed in tag-name position"),
+        NodeName::Block(_) => {
+            let span = tag_name.span();
+            proc_macro_error::emit_error!(span, "blocks not allowed in tag-name position");
+            Ident::new("", span)
+        }
         _ => Ident::new(
             &tag_name.to_string().replace(['-', ':'], "_"),
             tag_name.span(),
@@ -1043,4 +1064,52 @@ fn parse_event(event_name: &str) -> (&str, bool) {
     } else {
         (event_name, false)
     }
+}
+
+fn fancy_class_name<'a>(
+    name: &str,
+    cx: &Ident,
+    node: &'a NodeAttribute,
+) -> Option<(TokenStream, String, &'a Expr)> {
+    // special case for complex class names:
+    // e.g., Tailwind `class=("mt-[calc(100vh_-_3rem)]", true)`
+    if name == "class" {
+        if let Some(expr) = node.value.as_ref() {
+            if let syn::Expr::Tuple(tuple) = expr.as_ref() {
+                if tuple.elems.len() == 2 {
+                    let span = node.key.span();
+                    let class = quote_spanned! {
+                        span => .class
+                    };
+                    let class_name = &tuple.elems[0];
+                    let class_name = if let Expr::Lit(ExprLit {
+                        lit: Lit::Str(s), ..
+                    }) = class_name
+                    {
+                        s.value()
+                    } else {
+                        proc_macro_error::emit_error!(
+                            class_name.span(),
+                            "class name must be a string literal"
+                        );
+                        Default::default()
+                    };
+                    let value = &tuple.elems[1];
+                    return Some((
+                        quote! {
+                            #class(#class_name, (#cx, #value))
+                        },
+                        class_name,
+                        value,
+                    ));
+                } else {
+                    proc_macro_error::emit_error!(
+                        tuple.span(),
+                        "class tuples must have two elements."
+                    )
+                }
+            }
+        }
+    }
+    None
 }

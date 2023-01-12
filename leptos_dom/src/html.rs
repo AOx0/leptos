@@ -90,7 +90,12 @@ where
         element: el,
       };
 
-      HtmlElement { cx, element }
+      HtmlElement {
+        cx,
+        element,
+        #[cfg(debug_assertions)]
+        span: ::tracing::Span::current(),
+      }
     }
 
     #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
@@ -192,6 +197,8 @@ cfg_if! {
     /// Represents an HTML element.
     #[derive(Clone)]
     pub struct HtmlElement<El: ElementDescriptor> {
+      #[cfg(debug_assertions)]
+      pub(crate) span: ::tracing::Span,
       pub(crate) cx: Scope,
       pub(crate) element: El,
     }
@@ -229,13 +236,15 @@ where
   }
 }
 
-impl<El: ElementDescriptor> HtmlElement<El> {
+impl<El: ElementDescriptor + 'static> HtmlElement<El> {
   fn new(cx: Scope, element: El) -> Self {
     cfg_if! {
       if #[cfg(all(target_arch = "wasm32", feature = "web"))] {
         Self {
           cx,
           element,
+          #[cfg(debug_assertions)]
+          span: ::tracing::Span::current()
         }
       } else {
         Self {
@@ -272,6 +281,8 @@ impl<El: ElementDescriptor> HtmlElement<El> {
         let Self {
           cx,
           element,
+          #[cfg(debug_assertions)]
+          span
         } = self;
 
         HtmlElement {
@@ -281,6 +292,8 @@ impl<El: ElementDescriptor> HtmlElement<El> {
             element: element.as_ref().clone(),
             is_void: element.is_void(),
           },
+          #[cfg(debug_assertions)]
+          span
         }
       } else {
         let Self {
@@ -343,6 +356,71 @@ impl<El: ElementDescriptor> HtmlElement<El> {
     #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
     let _ = node_ref;
 
+    self
+  }
+
+  /// Runs the callback when this element has been mounted to the DOM.
+  ///
+  /// ### Important Note
+  /// This method will only ever run at most once. If this element
+  /// is unmounted and remounted, or moved somewhere else, it will not
+  /// re-run unless you call this method again.
+  pub fn on_mount(self, f: impl FnOnce(Self) + 'static) -> Self {
+    #[cfg(all(target_arch = "wasm32", feature = "web"))]
+    {
+      use futures::future::poll_fn;
+      use once_cell::unsync::OnceCell;
+      use std::{
+        cell::RefCell,
+        rc::Rc,
+        task::{Poll, Waker},
+      };
+
+      let this = self.clone();
+      let el = self.element.as_ref().clone();
+
+      wasm_bindgen_futures::spawn_local(async move {
+        while !crate::document().body().unwrap().contains(Some(&el)) {
+          // We need to cook ourselves a small future that resolves
+          // when the next animation frame is available
+          let waker = Rc::new(RefCell::new(None::<Waker>));
+          let ready = Rc::new(OnceCell::new());
+
+          crate::request_animation_frame({
+            let waker = waker.clone();
+            let ready = ready.clone();
+
+            move || {
+              let _ = ready.set(());
+              if let Some(waker) = &*waker.borrow() {
+                waker.wake_by_ref();
+              }
+            }
+          });
+
+          // Wait for the animation frame to become available
+          poll_fn(move |cx| {
+            let mut waker_borrow = waker.borrow_mut();
+
+            *waker_borrow = Some(cx.waker().clone());
+
+            if ready.get().is_some() {
+              Poll::Ready(())
+            } else {
+              Poll::<()>::Pending
+            }
+          })
+          .await;
+        }
+
+        f(this);
+      });
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", feature = "web")))]
+    {
+      let _ = f;
+    }
     self
   }
 
@@ -506,10 +584,22 @@ impl<El: ElementDescriptor> HtmlElement<El> {
   pub fn on<E: EventDescriptor + 'static>(
     self,
     event: E,
-    event_handler: impl FnMut(E::EventType) + 'static,
+    #[allow(unused_mut)] // used for tracing in debug
+    mut event_handler: impl FnMut(E::EventType) + 'static,
   ) -> Self {
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     {
+      cfg_if! {
+          if #[cfg(debug_assertions)] {
+              let onspan = ::tracing::span!(
+                  parent: &self.span,
+                  ::tracing::Level::TRACE,
+                  "on",
+                  event = %event.name()
+              );
+              let _onguard = onspan.enter();
+          }
+      }
       let event_name = event.name();
 
       if event.bubbles() {
@@ -542,6 +632,10 @@ impl<El: ElementDescriptor> HtmlElement<El> {
     #[cfg(all(target_arch = "wasm32", feature = "web"))]
     {
       if !HydrationCtx::is_hydrating() {
+        // add a debug-only, run-time warning for the SVG <a> element
+        #[cfg(debug_assertions)]
+        warn_on_ambiguous_a(self.element.as_ref(), &child);
+
         mount_child(MountKind::Append(self.element.as_ref()), &child);
       }
 
@@ -800,6 +894,17 @@ macro_rules! generate_html_tags {
         }
 
         #[$meta]
+      #[cfg_attr(
+        debug_assertions,
+        instrument(
+          level = "trace",
+          name = "HtmlElement",
+          skip_all,
+          fields(
+            tag = %format!("<{}/>", stringify!($tag))
+          )
+        )
+      )]
         pub fn $tag(cx: Scope) -> HtmlElement<[<$tag:camel $($trailing_)?>]> {
           HtmlElement::new(cx, [<$tag:camel $($trailing_)?>]::default())
         }
@@ -810,6 +915,23 @@ macro_rules! generate_html_tags {
   (@void void) => {
     fn is_void(&self) -> bool {
       true
+    }
+  }
+}
+
+#[cfg(all(debug_assertions, target_arch = "wasm32", feature = "web"))]
+fn warn_on_ambiguous_a(parent: &web_sys::Element, child: &View) {
+  if let View::Element(el) = &child {
+    if el.name == "a" {
+      if parent.namespace_uri() != el.element.namespace_uri() {
+        crate::warn!(
+          "Warning: you are appending an SVG <a/> to an HTML element, or an \
+           HTML <a/> to an SVG. Typically, this occurs when you create an \
+           <a/> with the `view` macro and append it to an SVG, but the \
+           framework assumed it was HTML when you created it. To specify that \
+           it is an SVG <a/>, use <svg::a/> in the view macro."
+        )
+      }
     }
   }
 }

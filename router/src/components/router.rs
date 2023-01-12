@@ -11,8 +11,8 @@ use wasm_bindgen::JsCast;
 use leptos_reactive::use_transition;
 
 use crate::{
-    create_location, matching::resolve_path, History, Location, LocationChange, RouteContext,
-    RouterIntegrationContext, State,
+    create_location, matching::resolve_path, Branch, History, Location, LocationChange,
+    RouteContext, RouterIntegrationContext, State,
 };
 
 #[cfg(not(feature = "ssr"))]
@@ -32,7 +32,7 @@ pub fn Router(
     /// The `<Router/>` should usually wrap your whole page. It can contain
     /// any elements, and should include a [Routes](crate::Routes) component somewhere
     /// to define and display [Route](crate::Route)s.
-    children: Box<dyn Fn(Scope) -> Fragment>,
+    children: Box<dyn FnOnce(Scope) -> Fragment>,
 ) -> impl IntoView {
     // create a new RouterContext and provide it to every component beneath the router
     let router = RouterContext::new(cx, base, fallback);
@@ -49,6 +49,8 @@ pub struct RouterContext {
 pub(crate) struct RouterContextInner {
     pub location: Location,
     pub base: RouteContext,
+    pub possible_routes: RefCell<Option<Vec<Branch>>>,
+    #[allow(unused)] // used in CSR/hydrate
     base_path: String,
     history: Box<dyn History>,
     cx: Scope,
@@ -85,7 +87,15 @@ impl RouterContext {
                 let history = use_context::<RouterIntegrationContext>(cx)
                     .unwrap_or_else(|| RouterIntegrationContext(Rc::new(crate::BrowserIntegration {})));
             } else {
-                let history = use_context::<RouterIntegrationContext>(cx).expect("You must call provide_context::<RouterIntegrationContext>(cx, ...) somewhere above the <Router/>.");
+                let history = use_context::<RouterIntegrationContext>(cx).unwrap_or_else(|| {
+                    let msg = "No router integration found.\n\nIf you are using this in the browser, \
+                        you should enable `feature = [\"csr\"]` or `feature = [\"hydrate\"] in your \
+                        `leptos_router` import.\n\nIf you are using this on the server without a \
+                        Leptos server integration, you must call provide_context::<RouterIntegrationContext>(cx, ...) \
+                        somewhere above the <Router/>.";
+                    leptos::debug_warn!("{}", msg);
+                    panic!("{}", msg);
+                });
             }
         };
 
@@ -104,10 +114,10 @@ impl RouterContext {
                     value: base_path.to_string(),
                     replace: true,
                     scroll: false,
-                    state: State(None)
+                    state: State(None),
                 });
             }
-		}
+        }
 
         // the current URL
         let (reference, set_reference) = create_signal(cx, source.with(|s| s.value.clone()));
@@ -153,6 +163,7 @@ impl RouterContext {
             referrers,
             state,
             set_state,
+            possible_routes: Default::default(),
         });
 
         // handle all click events on anchor tags
@@ -174,6 +185,15 @@ impl RouterContext {
     /// The [RouteContext] of the base route.
     pub fn base(&self) -> RouteContext {
         self.inner.base.clone()
+    }
+
+    /// A list of all possible routes this router can match.
+    pub fn possible_branches(&self) -> Vec<Branch> {
+        self.inner
+            .possible_routes
+            .borrow()
+            .clone()
+            .unwrap_or_default()
     }
 }
 
@@ -203,7 +223,6 @@ impl RouterContextInner {
 
                     if resolved_to != this.reference.get() || options.state != (this.state).get() {
                         if cfg!(feature = "server") {
-                            // TODO server out
                             self.history.navigate(&LocationChange {
                                 value: resolved_to,
                                 replace: options.replace,
@@ -329,19 +348,29 @@ impl RouterContextInner {
             }
 
             let to = path_name + &unescape(&url.search) + &unescape(&url.hash);
-            // TODO "state" is set as a prop, not an attribute
-            let state = a.get_attribute("state"); // TODO state
+            let state = get_property(a.unchecked_ref(), "state")
+                .ok()
+                .and_then(|value| {
+                    if value == wasm_bindgen::JsValue::UNDEFINED {
+                        None
+                    } else {
+                        Some(value)
+                    }
+                });
 
             ev.prevent_default();
 
+            let replace = get_property(a.unchecked_ref(), "replace")
+                .ok()
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
             if let Err(e) = self.navigate_from_route(
                 &to,
                 &NavigateOptions {
                     resolve: false,
-                    // TODO "replace" is set as a prop, not an attribute
-                    replace: a.has_attribute("replace"),
+                    replace,
                     scroll: !a.has_attribute("noscroll"),
-                    state: State(None), // TODO state
+                    state: State(state),
                 },
             ) {
                 log::error!("{e:#?}");
