@@ -64,7 +64,7 @@ pub use title::*;
 ///
 /// This should generally by provided somewhere in the root of your application using
 /// [provide_meta_context].
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct MetaContext {
     pub(crate) title: TitleContext,
     pub(crate) tags: MetaTagsContext,
@@ -76,6 +76,12 @@ pub(crate) struct MetaTagsContext {
     next_id: Rc<Cell<MetaTagId>>,
     #[allow(clippy::type_complexity)]
     els: Rc<RefCell<HashMap<String, (HtmlElement<AnyElement>, Scope, Option<web_sys::Element>)>>>,
+}
+
+impl std::fmt::Debug for MetaTagsContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetaTagsContext").finish()
+    }
 }
 
 impl MetaTagsContext {
@@ -208,10 +214,10 @@ impl MetaContext {
     ///   // `app` contains only the body content w/ hydration stuff, not the meta tags
     ///   assert_eq!(
     ///      app.into_view(cx).render_to_string(cx),
-    ///      "<main id=\"_0-1\"><leptos-unit leptos id=_0-2c></leptos-unit><leptos-unit leptos id=_0-4c></leptos-unit><p id=\"_0-5\">Some text</p></main>"
+    ///      "<main id=\"_0-1\"><!--hk=_0-2c|leptos-unit--><!--hk=_0-4c|leptos-unit--><p id=\"_0-5\">Some text</p></main>"
     ///   );
     ///   // `MetaContext::dehydrate()` gives you HTML that should be in the `<head>`
-    ///   assert_eq!(use_head(cx).dehydrate(), r#"<title>my title</title><link id="leptos-link-1" href="/style.css" rel="stylesheet" leptos-hk="_0-3"/>"#)
+    ///   assert_eq!(use_head(cx).dehydrate(), "<title>my title</title><link id=\"leptos-link-1\" href=\"/style.css\" rel=\"stylesheet\" leptos-hk=\"_0-3\"/>")
     /// });
     /// # }
     /// ```

@@ -16,7 +16,7 @@ use std::borrow::Cow;
 ///   <p>"Hello, world!"</p>
 /// });
 /// // static HTML includes some hydration info
-/// assert_eq!(html, "<style>[leptos]{display:none;}</style><p id=\"_0-1\">Hello, world!</p>");
+/// assert_eq!(html, "<p id=\"_0-1\">Hello, world!</p>");
 /// # }}
 /// ```
 pub fn render_to_string<F, N>(f: F) -> String
@@ -40,7 +40,7 @@ where
 
   // #[cfg(not(debug_assertions))]
   // format!("<style>l-m{{display:none;}}</style>{html}")
-  html.to_string()
+  html.into()
 }
 
 /// Renders a function to a stream of HTML strings.
@@ -123,16 +123,6 @@ pub fn render_to_stream_with_prefix_undisposed(
       let pending_resources = serde_json::to_string(&resources).unwrap();
       let prefix = prefix(cx);
 
-      let shell = {
-        #[cfg(debug_assertions)]
-        {
-          format!("<style>[leptos]{{display:none;}}</style>{shell}")
-        }
-
-        #[cfg(not(debug_assertions))]
-        format!("<style>l-m{{display:none;}}</style>{shell}")
-      };
-
       (
         shell,
         prefix,
@@ -150,45 +140,19 @@ pub fn render_to_stream_with_prefix_undisposed(
 
   // resources and fragments
   // stream HTML for each <Suspense/> as it resolves
-  let fragments = fragments.map(|(fragment_id, id_before_suspense, html)| {
-    cfg_if! {
-      if #[cfg(debug_assertions)] {
-        _ = id_before_suspense;
-        // Debug-mode <Suspense/>-replacement code
-        format!(
-          r#"
-                  <template id="{fragment_id}f">{html}</template>
-                  <script>
-                      var start = document.getElementById("_{fragment_id}o");
-                      var end = document.getElementById("_{fragment_id}c");
-                      var range = new Range();
-                      range.setStartBefore(start.nextSibling.nextSibling);
-                      range.setEndAfter(end.previousSibling.previousSibling);
-                      range.deleteContents();
-                      var tpl = document.getElementById("{fragment_id}f");
-                      end.parentNode.insertBefore(tpl.content.cloneNode(true), end.previousSibling);
-                  </script>
-                  "#
-        )
-      } else {
-        // Release-mode <Suspense/>-replacement code
-        format!(
-          r#"
-                  <template id="{fragment_id}f">{html}</template>
-                  <script>
-                      var start = document.getElementById("_{id_before_suspense}");
-                      var end = document.getElementById("_{fragment_id}");
-                      var range = new Range();
-                      range.setStartAfter(start);
-                      range.setEndBefore(end);
-                      range.deleteContents();
-                      var tpl = document.getElementById("{fragment_id}f");
-                      end.parentNode.insertBefore(tpl.content.cloneNode(true), end.previousSibling);
-                  </script>
-                  "#
-        )
-      }
-    }
+  // TODO can remove id_before_suspense entirely now
+  let fragments = fragments.map(|(fragment_id, _, html)| {
+    format!(
+      r#"
+              <template id="{fragment_id}f">{html}</template>
+              <script>
+                  var placeholder = document.getElementById("_{fragment_id}");
+                  var tpl = document.getElementById("{fragment_id}f");
+                  placeholder.textContent = "";
+                  placeholder.append(tpl.content.cloneNode(true));
+              </script>
+              "#
+    )
   });
   // stream data for each Resource as it resolves
   let resources = serializers.map(|(id, json)| {
@@ -316,7 +280,6 @@ impl View {
           }
           CoreComponent::Each(node) => {
             let children = node.children.take();
-
             (
               node.id,
               "each",
@@ -431,6 +394,7 @@ impl View {
   }
 }
 
+#[cfg(debug_assertions)]
 fn to_kebab_case(name: &str) -> String {
   if name.is_empty() {
     return String::new();
